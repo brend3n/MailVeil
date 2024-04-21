@@ -1,6 +1,6 @@
 from simple_term_menu import TerminalMenu # Menu
 from alive_progress import alive_bar # Progress bar
-from imports.mailtm.pymailtm import Account, MailTm # mail.tm API
+from imports.mailtm.pymailtm import Account, MailTm, Message # mail.tm API
 
 # Standard libraries
 import threading
@@ -11,8 +11,22 @@ import sys
 from time import sleep
 
 # Used for partitioning a list of data into chunks for n number of threads
-def chunkify(lst: list,n: int):
-    return [lst[i::n] for i in range(n)]
+def chunkify(lst: list, n: int):
+    # Total number of elements in the list
+    l = len(lst)
+    # Base size of each chunk
+    k = l // n
+    # Calculate the number of chunks that need an extra element
+    m = l % n
+    # Create chunks
+    chunks = []
+    start = 0
+    for i in range(n):
+        # Chunks 0 to m-1 will have k+1 elements, others will have k elements
+        end = start + (k + 1 if i < m else k)
+        chunks.append(lst[start:end])
+        start = end
+    return chunks
 
 class MailVeil():
   
@@ -25,6 +39,31 @@ class MailVeil():
     else:
       print("DB file already exists")
     
+    
+  def mv_monitor_account(self, account: Account):
+    """Keep waiting for new messages and open them in the browser."""
+    while True:
+        print("\nWaiting for new messages...")
+        start = len(account.get_messages())
+        while len(account.get_messages()) == start:
+            sleep(1)
+        print("New message arrived!")
+        
+        
+        print(f"Message received\n\n{account.get_messages()[0]}")
+        
+        options = ['Open in web','Back']
+        menu = TerminalMenu(options)
+        menu_entry = menu.show()      
+        
+        if options[menu_entry] == 'Back':
+          return
+        elif options[menu_entry] == 'Open in web':          
+          account.get_messages()[0].open_web()
+          return
+        else:
+          return None 
+                
   def get_new_email_account(self, email_address=None, password=None) -> Account:    
     timeout = 10
     
@@ -63,12 +102,14 @@ class MailVeil():
     print(f"id: {account.id_}\nemail_address: {account.address}\npassword: {account.password}")
     self._save_account(account)
     
-    options = ['Back']
+    options = ['Monitor','Back']
     menu = TerminalMenu(options)
     menu_entry = menu.show()      
     
     if options[menu_entry] == 'Back':
       return account
+    elif options[menu_entry] == 'Monitor':
+      self.mv_monitor_account(account)
     else:
       return None    
   
@@ -114,8 +155,8 @@ class MailVeil():
           break
         
         if timeout == 0:
-          print("Timed out trying to get accounts")
-          return None              
+          print("Timed out trying to get account")
+          continue
         
         # Try to get messages from MailTM server
         try:
@@ -126,7 +167,7 @@ class MailVeil():
           print(e)
           continue
                         
-        messages_parsed = [message.html for message in messages_all]
+        messages_parsed = [message for message in messages_all]
         email_obj = {
           "email_address" : account.address,
           "emails" : list(messages_parsed)
@@ -136,7 +177,7 @@ class MailVeil():
         list_of_email_objs.append(email_obj)
         bar()
         
-        return
+      return
       
     list_of_emails = [] # Stores our return value of the list of email_objs
     
@@ -148,7 +189,7 @@ class MailVeil():
     print("Num active accounts: ", len(accounts))
 
     chunks = chunkify(accounts, num_threads)
-
+  
     # Give each thread webpages
     for i in range(num_threads):
       t = threading.Thread(name=f"Thread {i} with {len(chunks[i])} accounts", target=target_function,args=([bar,chunks[i],list_of_emails]),)
@@ -190,7 +231,7 @@ class MailVeil():
     # TODO
     
     # Menu for each email
-    account_strs.append("Quit")
+    account_strs.append("Back")
     options = account_strs
     menu = TerminalMenu(options)
     
@@ -199,26 +240,31 @@ class MailVeil():
       entry = menu.show()
       
       # Quit scenario
-      if options[entry] == "Quit":
+      if options[entry] == "Back":
         return
       else:
         # Extract the email from selected menu choice
         email = str(options[entry]).split(":")[0]
         
         # Lookup emails for that address
-        messages = email_LUT[email]
+        messages: List[Message] = email_LUT[email]        
+        
         index = 0 # starting index of messages to look at
         
         # Look at each message
-        while (1):                
+        while (1):   
+          system("clear")
           if len(messages) == 0:
-              print("No messages for this account")    
+              print("No messages for this account")
               break
           else:
-            # Show message
-            print(messages[index])
             
-            message_menu_options = ['Next', 'Back', 'Quit']
+            print(f"Message {index+1}\n\n")
+            
+            # Show message
+            print(messages[index].html)
+            
+            message_menu_options = ['Next', 'Open in browser', 'Back']
             message_menu = TerminalMenu(message_menu_options)
             message_menu_entry = message_menu.show()
             
@@ -226,8 +272,8 @@ class MailVeil():
               index = (index + 1) % len(messages) if len(messages) > 0 else 0
             elif message_menu_options[message_menu_entry] == 'Back':
               break
-            elif message_menu_options[message_menu_entry] == 'Quit':
-              return
+            elif message_menu_options[message_menu_entry] == 'Open in browser':
+              messages[index].open_web()
             else:
               continue
     return
