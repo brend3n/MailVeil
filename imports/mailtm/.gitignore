@@ -1,0 +1,14 @@
+.venv
+*/__pycache__/
+dist/
+/.gmail.json
+coverage/
+/.projections.json
+/.vimspector.json
+.vim/
+/.coverage
+tests/**/cassettes/**/*.yaml
+/.coveralls.yml
+/.secrets
+.vscode
+.idea
