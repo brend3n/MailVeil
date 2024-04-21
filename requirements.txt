@@ -1,9 +1,13 @@
 about-time==4.2.1
 alive-progress==3.1.5
+altgraph==0.17.4
 certifi==2024.2.2
 charset-normalizer==3.3.2
 grapheme==0.6.0
 idna==3.7
+packaging==24.0
+pyinstaller==6.6.0
+pyinstaller-hooks-contrib==2024.4
 pymailtm==1.1.1
 pyperclip==1.8.2
 random-username==1.0.2
