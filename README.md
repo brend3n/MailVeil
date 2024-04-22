@@ -7,6 +7,8 @@
   <br>
 </p>
 
+![mailveil](https://github.com/brend3n/MailVeil/assets/49283761/9d64a386-5d6b-4529-9156-f049d7ef19bf)
+
 # Description
 Simple utility for creating temporary email addresses in the terminal
 
