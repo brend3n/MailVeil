@@ -229,7 +229,68 @@ class MailVeil():
 
     return list_of_emails
 
-  def show_emails(self, show_all_=False):
+
+  def account_menu(self) -> None:
+      
+    accounts = self._load_accounts()
+    account_to_get_boi: List[str] = [] # This list should only contain one string        
+    single_account_menu_options: List[str] = []
+    
+    temp_LUT = defaultdict(dict) # used for getting the id and password after selecting the address from the list
+    for line in accounts:
+      __id,address,__pw=tuple(line.split(','))
+      temp_LUT[address]['id'] = __id 
+      temp_LUT[address]['pw'] = __pw
+      single_account_menu_options.append(address)
+      
+    single_account_menu_options.append('Back')    
+    single_account_menu = TerminalMenu(single_account_menu_options)
+    
+    while (1):
+      system('clear')
+      entry = single_account_menu.show()
+      
+      if single_account_menu_options[entry] == 'Back':
+        return
+      else:
+        recreated_string_for_function_below=f"{temp_LUT[single_account_menu_options[entry]]['id']},{single_account_menu_options[entry]},{temp_LUT[single_account_menu_options[entry]]['pw']}"
+        account_to_get_boi.append(recreated_string_for_function_below) # we have the account information for the selection 
+        
+        options = ['Get messages', 'Delete account', 'Back']
+        menu = TerminalMenu(options)
+        
+        while (1):
+          system('clear')
+          entry = menu.show()
+          if options[entry] == 'Back':
+            break # Go back to all accounts
+          elif options[entry] == 'Delete account':
+            id=temp_LUT[single_account_menu_options[entry]]['id']
+            address=single_account_menu_options[entry]
+            pw=temp_LUT[single_account_menu_options[entry]]['pw']
+            account: Account = Account(id,address,pw)
+            delete_res = False
+            while(not delete_res):
+              try:
+                delete_res = account.delete_account()
+              except Exception as e:
+                print("Error deleting. Retrying",flush=True)
+              sleep(1)
+            print("Deleted account", flush=True)
+            # Remove deleted account from structures
+            single_account_menu_options.remove(single_account_menu_options[entry])
+            temp_LUT.pop(single_account_menu_options[entry], None)
+            sleep(1)
+            break
+          elif options[entry] == 'Get messages':
+            self.show_emails(email_address=account_to_get_boi)
+          else:
+            break      
+    return          
+
+  # TODO I want to refactor this function a bit. Its kind of hard to read and can be good to split some
+  # stuff up because it seems like I should split Account menu stuff from all of the message fetching
+  def show_emails(self, show_all_=False, email_address: List[str]=None):
     # Have list of all active email addresses
     account_strs = [] # Holds email addresses with number of emails in them
     accounts = self._load_accounts()
@@ -239,29 +300,8 @@ class MailVeil():
       with alive_bar(len(accounts)) as bar:  
         list_of_email_objs = self.get_all_emails_from_email_addresses(bar, accounts)
     else: # Just get one buddy
-      account_to_get_boi: List[str] = [] # This list should only contain one string        
-      single_account_menu_options: List[str] = []
-      
-      temp_LUT = defaultdict(dict) # used for getting the id and password after selecting the address from the list
-      for line in accounts:
-        __id,address,__pw=tuple(line.split(','))
-        temp_LUT[address]['id'] = __id 
-        temp_LUT[address]['pw'] = __pw
-        single_account_menu_options.append(address)
-      single_account_menu_options.append('Back')
-      
-      single_account_menu = TerminalMenu(single_account_menu_options)
-      while (1):
-        system('clear')
-        entry = single_account_menu.show()
-        if single_account_menu_options[entry] == 'Back':
-          return
-        else:
-          recreated_string_for_function_below=f"{temp_LUT[single_account_menu_options[entry]]['id']},{single_account_menu_options[entry]},{temp_LUT[single_account_menu_options[entry]]['pw']}"
-          account_to_get_boi.append(recreated_string_for_function_below)
-          break      
       with alive_bar(1) as bar:
-        list_of_email_objs = self.get_all_emails_from_email_addresses(bar, account_to_get_boi)
+        list_of_email_objs = self.get_all_emails_from_email_addresses(bar, email_address)
     
     # Creating a new dictionary with 'email_address' as the key and 'emails' as the value
     email_LUT = {item["email_address"]: item["emails"] for item in list_of_email_objs}
@@ -338,7 +378,7 @@ def main():
       if options[menu_entry] == 'Get new email address':
         mv.get_new_email_account()
       elif options[menu_entry] == 'Accounts':
-        mv.show_emails(show_all_=False)
+        mv.account_menu()
       elif options[menu_entry] == 'Get all emails for all adresses':
         mv.show_emails(show_all_=True)
       elif options[menu_entry] == 'Quit':
