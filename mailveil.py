@@ -4,7 +4,8 @@ from imports.mailtm.pymailtm import Account, MailTm, Message # mail.tm API
 
 # Standard libraries
 import threading
-from typing import List
+from typing import List, DefaultDict
+from collections import defaultdict
 from os import system
 import pathlib
 import sys
@@ -42,29 +43,34 @@ class MailVeil():
     
   def mv_monitor_account(self, account: Account):
     """Keep waiting for new messages and open them in the browser."""
-    while True:
-        print("\nWaiting for new messages...")
-        start = len(account.get_messages())
-        while len(account.get_messages()) == start:
-            sleep(1)
-        print("New message arrived!")
-        
-        
-        print(f"Message received\n\n{account.get_messages()[0]}")
-        
-        options = ['Open in web','Back']
-        menu = TerminalMenu(options)
-        menu_entry = menu.show()      
-        
-        if options[menu_entry] == 'Back':
-          return
-        elif options[menu_entry] == 'Open in web':          
-          account.get_messages()[0].open_web()
-          return
-        else:
-          return None 
+    print("Type Ctrl + C to stop monitoring\n")
+    try:
+      while True:
+          print("\nWaiting for new messages...")
+          start = len(account.get_messages())
+          while len(account.get_messages()) == start:
+              sleep(1)
+          print("New message arrived!")
+          
+          
+          print(f"Message received\n\n{account.get_messages()[0]}")
+          
+          options = ['Open in web','Back']
+          menu = TerminalMenu(options)
+          menu_entry = menu.show()      
+          
+          if options[menu_entry] == 'Back':
+            return
+          elif options[menu_entry] == 'Open in web':          
+            account.get_messages()[0].open_web()
+            return
+          else:
+            return None
+    except KeyboardInterrupt:
+      print("Done monitoring")
+      return
                 
-  def get_new_email_account(self, email_address=None, password=None) -> Account:    
+  def get_new_email_account(self, email_address=None, password=None) -> None:
     timeout = 10
     
     if not email_address and not password:
@@ -100,18 +106,33 @@ class MailVeil():
     
     print("\n")
     print(f"id: {account.id_}\nemail_address: {account.address}\npassword: {account.password}")
-    self._save_account(account)
     
-    options = ['Monitor','Back']
+    options = ['Monitor for messages','Delete','Back']
     menu = TerminalMenu(options)
-    menu_entry = menu.show()      
     
-    if options[menu_entry] == 'Back':
-      return account
-    elif options[menu_entry] == 'Monitor':
-      self.mv_monitor_account(account)
-    else:
-      return None    
+    while (1):      
+      menu_entry = menu.show()      
+      if options[menu_entry] == 'Back':
+        break
+      elif options[menu_entry] == 'Delete':
+        delete_res = False
+        while(not delete_res):
+          try:
+            delete_res = account.delete_account()
+          except Exception as e:
+            print("Error deleting. Retrying")
+          sleep(1)
+        print("Deleted account", flush=True)
+        sleep(1)
+        return None
+      elif options[menu_entry] == 'Monitor for messages':
+        self.mv_monitor_account(account)
+      else:
+        return None        
+    
+    print(f"Saving account {account.address}...")
+    self._save_account(account)
+    return
   
   def _save_account(self, account: Account) -> None:
     with open(self.db_file_name, "a") as f:
@@ -208,24 +229,44 @@ class MailVeil():
 
     return list_of_emails
 
-  def show_emails(self):
+  def show_emails(self, show_all_=False):
     # Have list of all active email addresses
     account_strs = [] # Holds email addresses with number of emails in them
     accounts = self._load_accounts()
-
-    print("Getting messages")
-    with alive_bar(len(accounts)) as bar:  
-      list_of_email_objs = self.get_all_emails_from_email_addresses(bar, accounts)            
+    
+    if show_all_ == True: # Get em all
+      print("Getting messages for all emails")
+      with alive_bar(len(accounts)) as bar:  
+        list_of_email_objs = self.get_all_emails_from_email_addresses(bar, accounts)
+    else: # Just get one buddy
+      account_to_get_boi: List[str] = [] # This list should only contain one string        
+      single_account_menu_options: List[str] = []
+      
+      temp_LUT = defaultdict(dict) # used for getting the id and password after selecting the address from the list
+      for line in accounts:
+        __id,address,__pw=tuple(line.split(','))
+        temp_LUT[address]['id'] = __id 
+        temp_LUT[address]['pw'] = __pw
+        single_account_menu_options.append(address)
+      single_account_menu_options.append('Back')
+      
+      single_account_menu = TerminalMenu(single_account_menu_options)
+      while (1):
+        system('clear')
+        entry = single_account_menu.show()
+        if single_account_menu_options[entry] == 'Back':
+          return
+        else:
+          recreated_string_for_function_below=f"{temp_LUT[single_account_menu_options[entry]]['id']},{single_account_menu_options[entry]},{temp_LUT[single_account_menu_options[entry]]['pw']}"
+          account_to_get_boi.append(recreated_string_for_function_below)
+          break      
+      with alive_bar(1) as bar:
+        list_of_email_objs = self.get_all_emails_from_email_addresses(bar, account_to_get_boi)
     
     # Creating a new dictionary with 'email_address' as the key and 'emails' as the value
     email_LUT = {item["email_address"]: item["emails"] for item in list_of_email_objs}
-    
-    for email_obj in list_of_email_objs:
-      email_address = email_obj["email_address"] 
-      email_list = email_obj["emails"]
-      
-      email_str = f"{email_address}: {len(email_list)}"
-      account_strs.append(email_str)
+
+    account_strs = [f"{email_obj['email_address']}: {len(email_obj['emails'])}" for email_obj in list_of_email_objs]
     
     # Sort by number of emails
     # TODO
@@ -258,11 +299,16 @@ class MailVeil():
               print("No messages for this account")
               break
           else:
+            msg_to_print = f"""
+            From: {messages[index].from_["name"]} ({messages[index].from_["address"]})
+            Subject: {messages[index].subject}
+            Text: {messages[index].text}
+            """
             
             print(f"Message {index+1}\n\n")
             
-            # Show message
-            print(messages[index].html)
+            # Show messagemess
+            print(msg_to_print)
             
             message_menu_options = ['Next', 'Open in browser', 'Back']
             message_menu = TerminalMenu(message_menu_options)
@@ -280,7 +326,7 @@ class MailVeil():
 
 
 def main():
-    options = ['Get new email', 'Show all email addresses', 'Quit']
+    options = ['Get new email address', 'Accounts', 'Get all emails for all adresses', 'Quit']
     menu = TerminalMenu(options)
     
     mv = MailVeil()
@@ -289,10 +335,12 @@ def main():
       system("clear") # clear screen
       menu_entry = menu.show()      
       
-      if options[menu_entry] == 'Get new email':
+      if options[menu_entry] == 'Get new email address':
         mv.get_new_email_account()
-      elif options[menu_entry] == 'Show all email addresses':
-        mv.show_emails()
+      elif options[menu_entry] == 'Accounts':
+        mv.show_emails(show_all_=False)
+      elif options[menu_entry] == 'Get all emails for all adresses':
+        mv.show_emails(show_all_=True)
       elif options[menu_entry] == 'Quit':
         return
       else:
