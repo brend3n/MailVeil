@@ -52,8 +52,15 @@ class MailVeil():
               sleep(1)
           print("New message arrived!")
           
+                    
+          message = account.get_messages()[0]
+          msg_to_print = f"""
+          From: {message.from_["name"]} ({message.from_["address"]})
+          Subject: {message.subject}
+          Text: {message.text}
+          """
           
-          print(f"Message received\n\n{account.get_messages()[0]}")
+          print(msg_to_print)
           
           options = ['Open in web','Back']
           menu = TerminalMenu(options)
@@ -142,8 +149,24 @@ class MailVeil():
     with open(self.db_file_name, "r+") as f:
       lines = f.readlines()        
     lines = [line.replace("\n","") for line in lines]      
-    return lines      
-        
+    return lines 
+  
+  def _delete_account_from_file(self, account: Account):
+    account_strs: List[str] = self._load_accounts()
+    found = False
+    for acc_str in account_strs:
+      if account.address in acc_str:
+        # print(f"Found account {account.address} in file\nNow deleting it.")
+        account_strs.remove(acc_str)
+        found = True
+        break
+      
+    if found == False:
+      print(f"Account {account.address} not in file")              
+    else:
+      with open(self.db_file_name, "w+") as f:
+        [f.write(f"{acc}\n") for acc in account_strs]
+      print(f"Deleted {account.address} from file")
 
   def get_all_emails_from_email_addresses(self, bar: alive_bar, accounts: List[str]):
     def target_function(bar, chunk_accounts, list_of_email_objs):
@@ -233,7 +256,6 @@ class MailVeil():
   def account_menu(self) -> None:
       
     accounts = self._load_accounts()
-    account_to_get_boi: List[str] = [] # This list should only contain one string        
     single_account_menu_options: List[str] = []
     
     temp_LUT = defaultdict(dict) # used for getting the id and password after selecting the address from the list
@@ -246,43 +268,56 @@ class MailVeil():
     single_account_menu_options.append('Back')    
     single_account_menu = TerminalMenu(single_account_menu_options)
     
-    while (1):
-      system('clear')
+    while (1):  
+      
+      # This is up here because we want to reset it each loop
+      account_to_get_boi: List[str] = [] # This list should only contain one string              
+      
+      system('clear')  
       entry = single_account_menu.show()
       
       if single_account_menu_options[entry] == 'Back':
         return
-      else:
-        recreated_string_for_function_below=f"{temp_LUT[single_account_menu_options[entry]]['id']},{single_account_menu_options[entry]},{temp_LUT[single_account_menu_options[entry]]['pw']}"
-        account_to_get_boi.append(recreated_string_for_function_below) # we have the account information for the selection 
-        
+      else:              
         options = ['Get messages', 'Delete account', 'Back']
         menu = TerminalMenu(options)
         
         while (1):
           system('clear')
-          entry = menu.show()
-          if options[entry] == 'Back':
+          entry_account = menu.show()
+          if options[entry_account] == 'Back':
             break # Go back to all accounts
-          elif options[entry] == 'Delete account':
-            id=temp_LUT[single_account_menu_options[entry]]['id']
-            address=single_account_menu_options[entry]
-            pw=temp_LUT[single_account_menu_options[entry]]['pw']
-            account: Account = Account(id,address,pw)
+          elif options[entry_account] == 'Delete account':            
+            id=temp_LUT[single_account_menu_options[entry]]['id'] or "No id"
+            address=single_account_menu_options[entry] or "No address"
+            pw=temp_LUT[single_account_menu_options[entry]]['pw'] or "No pw"
+            try:
+              account: Account = Account(id,address,pw)
+            except Exception as e:
+              print("Couldnt get account or account already deleted", flush=True)
+              # Remove deleted account from structures
+              single_account_menu_options.remove(single_account_menu_options[entry])
+              single_account_menu = TerminalMenu(single_account_menu_options)              
+              temp_LUT.pop(single_account_menu_options[entry], None)
+              break              
             delete_res = False
             while(not delete_res):
               try:
                 delete_res = account.delete_account()
               except Exception as e:
                 print("Error deleting. Retrying",flush=True)
-              sleep(1)
-            print("Deleted account", flush=True)
+              sleep(1)            
             # Remove deleted account from structures
-            single_account_menu_options.remove(single_account_menu_options[entry])
             temp_LUT.pop(single_account_menu_options[entry], None)
+            single_account_menu_options.remove(single_account_menu_options[entry])
+            single_account_menu = TerminalMenu(single_account_menu_options)            
+            self._delete_account_from_file(account)
             sleep(1)
             break
-          elif options[entry] == 'Get messages':
+          elif options[entry_account] == 'Get messages':
+            print(f"Reading messages for {single_account_menu_options[entry]}")
+            recreated_string_for_function_below=f"{temp_LUT[single_account_menu_options[entry]]['id']},{single_account_menu_options[entry]},{temp_LUT[single_account_menu_options[entry]]['pw']}"
+            account_to_get_boi.append(recreated_string_for_function_below) # we have the account information for the selection 
             self.show_emails(email_address=account_to_get_boi)
           else:
             break      
